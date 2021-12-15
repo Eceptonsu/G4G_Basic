@@ -48,7 +48,6 @@ void drawIMGUI(Renderer *myRenderer, iCubeModel*cubeSystem,
     // Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
         {
 
-
             // used to get values from imGui to the camera (view) matrix
             static float v_axis[] = { 0.0f,1.0f,0.0f };
             static float v_angle = 0.0f;
@@ -109,12 +108,22 @@ void drawIMGUI(Renderer *myRenderer, iCubeModel*cubeSystem,
             sg->camera.position = vMat * glm::vec4(v_transVec[0], v_transVec[1], v_transVec[2], 1.0f);
             sg->camera.target = glm::vec4(camTarget[0], camTarget[1], camTarget[2], 1.0f);
 
-            ImGui::NewLine();
-
             if (cubeSystem != NULL)
                 ImGui::DragInt("particles", &(cubeSystem->instances), 1, 0, cubeSystem->maxParticles);
 
             ImGui::ShowDemoWindow(); // easter egg!  show the ImGui demo window
+
+            ImGui::Checkbox("HDR", &sg->postProcAttri.hdr);
+            ImGui::SameLine(77.5);
+            ImGui::SliderFloat("HDR_Expo", &sg->postProcAttri.hdr_exposure, 0.0f, 2.5f);
+            
+            if (sg->postProcAttri.hdr) sg->postProcAttri.bloom = false;
+
+            ImGui::Checkbox("Bloom", &sg->postProcAttri.bloom);
+            ImGui::SameLine(77.5);
+            ImGui::SliderFloat("BLM_Expo", &sg->postProcAttri.bloom_exposure, 0.0f, 2.5f);
+
+            if (sg->postProcAttri.bloom) sg->postProcAttri.hdr = false;
         
             ImGui::Image((void*)(intptr_t)texMap["depth"], ImVec2(128, 128));
             ImGui::SameLine();

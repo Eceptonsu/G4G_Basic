@@ -1,0 +1,2 @@
+scrn_width = 1280
+scrn_height = 720

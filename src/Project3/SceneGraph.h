@@ -17,6 +17,14 @@
 
 #include "renderer.h"
 
+struct PostProcessing {
+    bool hdr;
+    float hdr_exposure;
+
+    bool bloom;
+    float bloom_exposure;
+};
+
 struct Orthographic {
     float clipNear, clipFar;
     float clipRight, clipLeft;
@@ -117,6 +125,9 @@ public:
 
     treeNode* tree;
     treeNode* currNode;
+
+    PostProcessing postProcAttri;
+
     double time = 0.0;
 
 public:
@@ -158,6 +169,11 @@ public:
         camera.up = glm::vec3(0.0, 1.0, 0.0);
         light.up = glm::vec3(0.0, 1.0, 0.0);
         currNode = tree = new treeNode(glm::mat4(1), (treeNode*)NULL);
+
+        postProcAttri.hdr = true;
+        postProcAttri.hdr_exposure = 1.0f;
+        postProcAttri.bloom = false;
+        postProcAttri.bloom_exposure = 0.5f;
     }
 
     void renderFrom(emitterCollector ec, double deltaTime) {

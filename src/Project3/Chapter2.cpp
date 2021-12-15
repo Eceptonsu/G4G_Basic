@@ -63,6 +63,7 @@ void Chapter2::dragDrop(GLFWwindow* window, int count, const char** paths) {
     }else if (temp.find("obj") != std::string::npos)
         scene.addRenderer(new ObjModel(paths[0], Material::materials["litMaterial"], glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)), glm::vec3(1.0f))));
 }
+
 void cubeOfCubes(SceneGraph* sg)
 {
     for (int i = -1; i < 2; i++)
@@ -140,7 +141,6 @@ void setupScene(SceneGraph* scene, treeNode** nodes)
     nodes[4] = scene->addChild(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)));
 
     cubeOfCubes(scene);
-
 }
 
 void animateNodes(treeNode** nodes, double time)
@@ -154,6 +154,12 @@ void animateNodes(treeNode** nodes, double time)
 
 unsigned int depthMapFBO = 0;
 unsigned int offscreenFBO = 0;
+unsigned int hdrFBO = 0;
+
+unsigned int colorBuffers[2];
+unsigned int pingpongFBO[2];
+unsigned int pingpongColorbuffers[2];
+
 treeNode* nodes[5];
 
 std::map<std::string, unsigned int> texMap;
@@ -162,15 +168,96 @@ const unsigned int SHADOW_WIDTH = 1024;
 const unsigned int SHADOW_HEIGHT = 1024;
 
 // settings
-extern unsigned int scrn_width;
-extern unsigned int scrn_height;
-
+extern std::map<std::string, int> settings;
 
 unsigned int texture[] = { 0,1,2,3 };
 
 CubeModel* lightCube = NULL;
 SkyboxModel* mySky;
 QuadModel* fQuad;
+
+unsigned int quadVAO = 0;
+unsigned int quadVBO;
+void renderQuad()
+{
+    if (quadVAO == 0)
+    {
+        float quadVertices[] = {
+            // positions        // texture Coords
+            -1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+            -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+             1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+             1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+        };
+        // setup plane VAO
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    }
+    glBindVertexArray(quadVAO);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindVertexArray(0);
+}
+
+void setupHDRBloom()
+{
+    glGenFramebuffers(1, &hdrFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+    glGenTextures(2, colorBuffers);
+    for (unsigned int i = 0; i < 2; i++)
+    {
+        glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, settings["scrn_width"], settings["scrn_height"], 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
+    }
+
+    unsigned int rboDepth;
+    glGenRenderbuffers(1, &rboDepth);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, settings["scrn_width"], settings["scrn_height"]);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+    unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    glDrawBuffers(2, attachments);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "Framebuffer not complete!" << std::endl;
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glGenFramebuffers(2, pingpongFBO);
+    glGenTextures(2, pingpongColorbuffers);
+    for (unsigned int i = 0; i < 2; i++)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
+        glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, settings["scrn_width"], settings["scrn_height"], 0, GL_RGBA, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorbuffers[i], 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            std::cout << "Framebuffer not complete!" << std::endl;
+    }
+
+    Shader::shaders["Hdr"]->use();
+    Shader::shaders["Hdr"]->setInt("hdrBuffer", 0);
+
+    Shader::shaders["Blur"]->use();
+    Shader::shaders["Blur"]->setInt("image", 0);
+
+    Shader::shaders["Bloom"]->use();
+    Shader::shaders["Bloom"]->setInt("scene", 0);
+    Shader::shaders["Bloom"]->setInt("bloomBlur", 1);
+}
 
 void Chapter2::start()
 {
@@ -182,7 +269,7 @@ void Chapter2::start()
     texMap["rayTrace"] = texture[1];
     texMap["sky"] = texture[2];
     texMap["depth"] = setupDepthMap(&depthMapFBO, SHADOW_WIDTH, SHADOW_HEIGHT);
-    texMap["offScreen"] = setupFrameBuffer(&offscreenFBO, scrn_width, scrn_height);
+    texMap["offScreen"] = setupFrameBuffer(&offscreenFBO, settings["scrn_width"], settings["scrn_height"]);
     texMap["shuttle"] = loadTexture("data/spstob_1.jpg");
     texMap["unicorn"] = loadTexture("data/unicorn.png");
     texMap["rpi"] = loadTexture("data/rpi.png");
@@ -191,7 +278,7 @@ void Chapter2::start()
     // 
     // set up the perspective projection for the camera and the light
     //
-    scene.camera.setPerspective(glm::radians(60.0f), ((float)scrn_width / (float)scrn_height), 0.01f, 1000.0f);    //  1.0472 radians = 60 degrees
+    scene.camera.setPerspective(glm::radians(60.0f), ((float)settings["scrn_width"] / (float)settings["scrn_height"]), 0.01f, 1000.0f);    //  1.0472 radians = 60 degrees
     scene.camera.position = glm::vec4(0, 0, -5, 1.0f);
     scene.camera.target = glm::vec4(0, 0, 0, 1.0f);
 
@@ -228,6 +315,10 @@ void Chapter2::start()
     {   // declare and intialize shader with ADS lighting
         new Shader("data/vFlatLit.glsl", "data/fFlatLit.glsl", "PhongShadowed");
         new Material(Shader::shaders["PhongShadowed"], "litMaterial", texMap["myTexture"], texMap["depth"], true);
+
+        new Shader("data/vBloom.glsl", "data/fBloom.glsl", "Bloom");
+        new Shader("data/vBlur.glsl", "data/fBlur.glsl", "Blur");
+        new Shader("data/vHdr.glsl", "data/fHdr.glsl", "Hdr");
     }
 
     setupShadersAndMaterials(texMap);
@@ -256,6 +347,7 @@ void Chapter2::start()
     setupScene(&scene, nodes);
     //}
 
+    setupHDRBloom();
 }
 
 void Chapter2::update(double deltaTime) {
@@ -266,7 +358,6 @@ void Chapter2::update(double deltaTime) {
     // moving light source, must set it's position...
     glm::mat4 rotate = glm::rotate(glm::mat4(1.0f), (float)scene.time, glm::vec3(1, 0, 0.0f));
     scene.light.position = glm::vec4(-4.0f, 2.0f, 0.0f, 1.0f);
-
 
     // show a cube from that position
     lightCube->modelMatrix = rotate * glm::scale(glm::translate(glm::mat4(1.0f), scene.light.position), glm::vec3(.25f));
@@ -285,8 +376,11 @@ void Chapter2::update(double deltaTime) {
         scene.renderFrom(scene.light, deltaTime);
     }
     {
+        //glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
         // do the "normal" drawing
-        glViewport(0, 0, scrn_width, scrn_height);
+        glViewport(0, 0, settings["scrn_width"], settings["scrn_height"]);
 
         glBindFramebuffer(GL_FRAMEBUFFER, offscreenFBO); // offscreen
 
@@ -299,7 +393,52 @@ void Chapter2::update(double deltaTime) {
 
         // render from the cameras position and perspective  this may or may not be offscreen 
         scene.renderFrom(scene.camera, deltaTime);
+
+        if (scene.postProcAttri.hdr)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            Shader::shaders["Hdr"]->use();
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+            Shader::shaders["Hdr"]->setInt("hdr", scene.postProcAttri.hdr);
+            Shader::shaders["Hdr"]->setFloat("exposure", scene.postProcAttri.hdr_exposure);
+            renderQuad();
+        }
+        else
+        {
+            bool horizontal = true, first_iteration = true;
+            unsigned int amount = 10;
+            Shader::shaders["Blur"]->use();
+            for (unsigned int i = 0; i < amount; i++)
+            {
+                glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
+                Shader::shaders["Blur"]->setInt("horizontal", horizontal);
+                glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
+                renderQuad();
+                horizontal = !horizontal;
+                if (first_iteration)
+                    first_iteration = false;
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            Shader::shaders["Bloom"]->use();
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[!horizontal]);
+            Shader::shaders["Bloom"]->setInt("bloom", scene.postProcAttri.bloom);
+            Shader::shaders["Bloom"]->setFloat("exposure", scene.postProcAttri.bloom_exposure);
+            renderQuad();
+        }
+
+        std::cout << "hdr: " << (scene.postProcAttri.hdr ? "on" : "off") << std::endl;
+        std::cout << "bloom: " << (scene.postProcAttri.bloom ? "on" : "off") << std::endl;
     }
+
     if (offscreenFBO != 0) {
         // assuming the previous was offscreen, we now need to draw a quad with the results to the screen!
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -308,6 +447,7 @@ void Chapter2::update(double deltaTime) {
 
         fQuad->render(glm::mat4(1.0f), glm::mat4(1.0f), deltaTime, &scene);
     }
+
     // draw imGui over the top
     drawIMGUI(frontQuad, cubeSystem, &scene, texMap, nodes);
     //scene.time = glfwGetTime();

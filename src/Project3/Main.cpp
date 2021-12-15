@@ -43,8 +43,7 @@
 Chapter2 myDemo;
 
 // settings
-unsigned int scrn_width = 1280;
-unsigned int scrn_height = 720;
+std::map<std::string, int> settings;
 
 #pragma warning( disable : 26451 )
 
@@ -54,9 +53,34 @@ void dragDrop(GLFWwindow* window, int count, const char** paths) {
     myDemo.dragDrop(window, count, paths);
 }
 
+void readSetting() 
+{
+    std::string filePath = std::filesystem::absolute("./data/").u8string() + "settings.txt";
+
+    std::ifstream inputFile(filePath);
+    if (inputFile.is_open())
+    {
+        std::string line;
+        while (getline(inputFile, line)) {
+            line.erase(std::remove_if(line.begin(), line.end(), isspace), line.end());
+            if (line[0] == '#' || line.empty())
+                continue;
+
+            auto delimiterPos = line.find("=");
+            auto name = line.substr(0, delimiterPos);
+            auto value = stoi(line.substr(delimiterPos + 1));
+            std::cout << name << " " << value << '\n';
+            settings[name] = value;
+        }
+    }
+    else {
+        std::cerr << filePath << std::endl;
+        std::cerr << "Couldn't open setting file for reading.\n";
+    }
+}
+
 int main()
 {
-
     namespace fs = std::filesystem;
     std::cout << "Current path is " << fs::current_path() << '\n';
 
@@ -68,6 +92,8 @@ int main()
     }
 
     std::cout << "Absolute path for shaders is " << std::filesystem::absolute("./data/") << '\n';
+
+    readSetting();
 
     // glfw: initialize and configure
     // ------------------------------
@@ -83,7 +109,7 @@ int main()
 #endif
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Graphics4Games Fall 2021", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(settings["scrn_width"], settings["scrn_height"], "Graphics4Games Fall 2021", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -112,8 +138,8 @@ int main()
     GLint viewportDims[4];
 
     glGetIntegerv(GL_VIEWPORT, viewportDims);
-    scrn_width = viewportDims[2];
-    scrn_height = viewportDims[3];
+    settings["scrn_width"] = viewportDims[2];
+    settings["scrn_height"] = viewportDims[3];
 
     myDemo.start();
 
@@ -164,7 +190,7 @@ int main()
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
     // make sure the viewport matches the new window dimensions
-    glViewport(0, 0, scrn_width = width, scrn_height = height);
+    glViewport(0, 0, settings["scrn_width"] = width, settings["scrn_height"] = height);
 
     myDemo.callback(window, width, height);
 }

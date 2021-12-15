@@ -46,12 +46,12 @@ void BasicChapter::start()
     texMap["rayTrace"] = texture[1];
     texMap["sky"] = texture[2];
     texMap["depth"] = setupDepthMap(&depthMapFBO, SHADOW_WIDTH, SHADOW_HEIGHT);
-    texMap["offScreen"] = setupFrameBuffer(&offscreenFBO, scrn_width, scrn_height);
+    texMap["offScreen"] = setupFrameBuffer(&offscreenFBO, settings["scrn_width"], settings["scrn_height"]);
 
     // 
     // set up the perspective projection for the camera and the light
     //
-    scene.camera.setPerspective(glm::radians(60.0f), ((float)scrn_width / (float)scrn_height), 0.01f, 1000.0f);    //  1.0472 radians = 60 degrees
+    scene.camera.setPerspective(glm::radians(60.0f), ((float)settings["scrn_width"] / (float)settings["scrn_height"]), 0.01f, 1000.0f);    //  1.0472 radians = 60 degrees
     scene.camera.position = glm::vec4(0, 0, -5, 1.0f);
     scene.camera.target = glm::vec4(0, 0, 0, 1.0f);
 
@@ -150,7 +150,7 @@ void BasicChapter::update(double deltaTime) {
     }
     {
         // do the "normal" drawing
-        glViewport(0, 0, scrn_width, scrn_height);
+        glViewport(0, 0, settings["scrn_width"], settings["scrn_height"]);
 
         glBindFramebuffer(GL_FRAMEBUFFER, offscreenFBO); // offscreen
 

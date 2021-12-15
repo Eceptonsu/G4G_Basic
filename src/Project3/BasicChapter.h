@@ -31,5 +31,4 @@ public:
 };
 
 // settings
-extern unsigned int scrn_width;
-extern unsigned int scrn_height;
+extern std::map<std::string, int> settings;
