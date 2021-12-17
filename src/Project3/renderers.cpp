@@ -28,7 +28,7 @@ void Renderer::render(glm::mat4 treeMat, glm::mat4 vpMat, double deltaTime, Scen
     /* you may be wondering what happened to the view and projection matrices...
     *
     * because of the tree hierarchy, we put the inherited "tree" transform in the view
-    * and combined the projection and view into a  vpMat
+    * and combined the projection and view into a vpMat
     * in most cases this is invisible, but it helps with lighting since we need to keep the 
     * model transformations separate from the view space so that lighting calculations can happen 
     * BEFORE we transform the model into view (and projection) space.

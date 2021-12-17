@@ -105,6 +105,16 @@ void setupShadersAndMaterials(std::map<std::string, unsigned int> texMap)
         new Shader("data/vParticle.glsl", "data/fParticle.glsl", "Particle"); // declare and intialize skybox shader
         new Material(Shader::shaders["Particle"], "pMaterial", -1, glm::vec4(1.0, 0.0, 0.0, 1.0));
     }
+
+    Shader::shaders["Hdr"]->use();
+    Shader::shaders["Hdr"]->setInt("hdrBuffer", 0);
+
+    Shader::shaders["Blur"]->use();
+    Shader::shaders["Blur"]->setInt("image", 0);
+
+    Shader::shaders["Bloom"]->use();
+    Shader::shaders["Bloom"]->setInt("scene", 0);
+    Shader::shaders["Bloom"]->setInt("bloomBlur", 1);
 }
 
 iCubeModel* cubeSystem = NULL;
@@ -118,12 +128,12 @@ void setupScene(SceneGraph* scene, treeNode** nodes)
     nodes[1] = scene->addChild(glm::mat4(1));
     nodes[1]->enabled = false;
 
-    //glm::mat4 floorXF = glm::rotate(glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.0f, 0.0f)), glm::vec3(10.0f)), glm::pi<float>() / 2.0f, glm::vec3(-1, 0, 0));
-    //scene->addRenderer(frontQuad = new QuadModel(Material::materials["brick"], floorXF)); // our floor quad
+    glm::mat4 floorXF = glm::rotate(glm::scale(glm::translate(glm::mat4(1.0), glm::vec3(0.0f, -1.0f, 0.0f)), glm::vec3(10.0f)), glm::pi<float>() / 2.0f, glm::vec3(-1, 0, 0));
+    scene->addRenderer(frontQuad = new QuadModel(Material::materials["brick"], floorXF)); // our floor quad
 
     //scene->addRenderer(new ObjModel("data/Sponza-master/sponza.obj_", Material::materials["litMaterial"], glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -3.0f, 0.0f)), glm::vec3(.02f))));
     //scene->addRenderer(new ObjModel("data/fireplace/fireplace_room.obj_", Material::materials["litMaterial"], glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -3.0f, 0.0f)), glm::vec3(.02f))));
-    //scene->addRenderer(new ObjModel("data/shuttle.obj_", Material::materials["shuttle"], glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f)), glm::vec3(2.0f))));
+    scene->addRenderer(new ObjModel("data/shuttle.obj_", Material::materials["shuttle"], glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f)), glm::vec3(2.0f))));
 
     nodes[2] = scene->addChild(glm::mat4(1));
 
@@ -205,60 +215,6 @@ void renderQuad()
     glBindVertexArray(0);
 }
 
-void setupHDRBloom()
-{
-    glGenFramebuffers(1, &hdrFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-    glGenTextures(2, colorBuffers);
-    for (unsigned int i = 0; i < 2; i++)
-    {
-        glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, settings["scrn_width"], settings["scrn_height"], 0, GL_RGBA, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
-    }
-
-    unsigned int rboDepth;
-    glGenRenderbuffers(1, &rboDepth);
-    glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, settings["scrn_width"], settings["scrn_height"]);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-    unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
-    glDrawBuffers(2, attachments);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        std::cout << "Framebuffer not complete!" << std::endl;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    glGenFramebuffers(2, pingpongFBO);
-    glGenTextures(2, pingpongColorbuffers);
-    for (unsigned int i = 0; i < 2; i++)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
-        glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, settings["scrn_width"], settings["scrn_height"], 0, GL_RGBA, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorbuffers[i], 0);
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-            std::cout << "Framebuffer not complete!" << std::endl;
-    }
-
-    Shader::shaders["Hdr"]->use();
-    Shader::shaders["Hdr"]->setInt("hdrBuffer", 0);
-
-    Shader::shaders["Blur"]->use();
-    Shader::shaders["Blur"]->setInt("image", 0);
-
-    Shader::shaders["Bloom"]->use();
-    Shader::shaders["Bloom"]->setInt("scene", 0);
-    Shader::shaders["Bloom"]->setInt("bloomBlur", 1);
-}
-
 void Chapter2::start()
 {
     globalScene = &scene;
@@ -274,6 +230,8 @@ void Chapter2::start()
     texMap["unicorn"] = loadTexture("data/unicorn.png");
     texMap["rpi"] = loadTexture("data/rpi.png");
     texMap["brick"] = loadTexture("data/brick1.jpg");
+
+    setupHdrBloom(&hdrFBO, pingpongFBO, colorBuffers, pingpongColorbuffers, settings["scrn_width"], settings["scrn_height"]);
 
     // 
     // set up the perspective projection for the camera and the light
@@ -314,11 +272,15 @@ void Chapter2::start()
     }
     {   // declare and intialize shader with ADS lighting
         new Shader("data/vFlatLit.glsl", "data/fFlatLit.glsl", "PhongShadowed");
-        new Material(Shader::shaders["PhongShadowed"], "litMaterial", texMap["myTexture"], texMap["depth"], true);
+
+        //
+        new Material(Shader::shaders["PhongShadowed"], "litMaterial", NULL, texMap["depth"], true);
 
         new Shader("data/vBloom.glsl", "data/fBloom.glsl", "Bloom");
         new Shader("data/vBlur.glsl", "data/fBlur.glsl", "Blur");
         new Shader("data/vHdr.glsl", "data/fHdr.glsl", "Hdr");
+
+        new Shader("data/vPbr.glsl", "data/fPbr.glsl", "Pbr");
     }
 
     setupShadersAndMaterials(texMap);
@@ -342,12 +304,7 @@ void Chapter2::start()
 
     scene.addRenderer(lightCube = new CubeModel(Material::materials["white"], glm::translate(glm::mat4(1.0f), scene.light.position)));
 
-    //{
-        // crazy scene stuff
     setupScene(&scene, nodes);
-    //}
-
-    setupHDRBloom();
 }
 
 void Chapter2::update(double deltaTime) {
@@ -375,10 +332,10 @@ void Chapter2::update(double deltaTime) {
         // render from the lights perspective and position to create the shadowMap
         scene.renderFrom(scene.light, deltaTime);
     }
-    {
-        //glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // Without Bloom or Hdr
+    if (!scene.postProcAttri.hdr && !scene.postProcAttri.bloom)
+    {
         // do the "normal" drawing
         glViewport(0, 0, settings["scrn_width"], settings["scrn_height"]);
 
@@ -391,13 +348,44 @@ void Chapter2::update(double deltaTime) {
 
         glEnable(GL_DEPTH_TEST);
 
-        // render from the cameras position and perspective  this may or may not be offscreen 
+        // render from the cameras position and perspective, this may or may not be offscreen 
         scene.renderFrom(scene.camera, deltaTime);
+
+        if (offscreenFBO != 0) 
+        {
+            // assuming the previous was offscreen, we now need to draw a quad with the results to the screen!
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            glDisable(GL_DEPTH_TEST);
+
+            fQuad->render(glm::mat4(1.0f), glm::mat4(1.0f), deltaTime, &scene);
+        }
+    }
+    else
+    {
+        // do the "normal" drawing
+        glViewport(0, 0, settings["scrn_width"], settings["scrn_height"]);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glDisable(GL_DEPTH_TEST);
+        mySky->render(glm::mat4(glm::mat3(glm::lookAt(scene.camera.position, scene.camera.target, scene.camera.up))), scene.camera.projection(), deltaTime, &scene);
+
+        glEnable(GL_DEPTH_TEST);
+
+        // render from the cameras position and perspective, this may or may not be offscreen 
+        scene.renderFrom(scene.camera, deltaTime);
+    }
+
+    if (hdrFBO != 0) 
+    {
+        // assuming the previous was offscreen, we now need to draw a quad with the results to the screen!
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         if (scene.postProcAttri.hdr)
         {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             Shader::shaders["Hdr"]->use();
             glActiveTexture(GL_TEXTURE0);
@@ -406,7 +394,8 @@ void Chapter2::update(double deltaTime) {
             Shader::shaders["Hdr"]->setFloat("exposure", scene.postProcAttri.hdr_exposure);
             renderQuad();
         }
-        else
+        
+        if (scene.postProcAttri.bloom)
         {
             bool horizontal = true, first_iteration = true;
             unsigned int amount = 10;
@@ -415,7 +404,7 @@ void Chapter2::update(double deltaTime) {
             {
                 glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
                 Shader::shaders["Blur"]->setInt("horizontal", horizontal);
-                glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
+                glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);
                 renderQuad();
                 horizontal = !horizontal;
                 if (first_iteration)
@@ -434,18 +423,6 @@ void Chapter2::update(double deltaTime) {
             Shader::shaders["Bloom"]->setFloat("exposure", scene.postProcAttri.bloom_exposure);
             renderQuad();
         }
-
-        std::cout << "hdr: " << (scene.postProcAttri.hdr ? "on" : "off") << std::endl;
-        std::cout << "bloom: " << (scene.postProcAttri.bloom ? "on" : "off") << std::endl;
-    }
-
-    if (offscreenFBO != 0) {
-        // assuming the previous was offscreen, we now need to draw a quad with the results to the screen!
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        glDisable(GL_DEPTH_TEST);
-
-        fQuad->render(glm::mat4(1.0f), glm::mat4(1.0f), deltaTime, &scene);
     }
 
     // draw imGui over the top
