@@ -23,6 +23,8 @@ struct PostProcessing {
 
     bool bloom;
     float bloom_exposure;
+
+    bool pbr;
 };
 
 struct Orthographic {

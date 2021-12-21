@@ -124,7 +124,20 @@ void drawIMGUI(Renderer *myRenderer, iCubeModel*cubeSystem,
             ImGui::SliderFloat("BLM_Expo", &sg->postProcAttri.bloom_exposure, 0.0f, 2.5f);
 
             if (sg->postProcAttri.bloom) sg->postProcAttri.hdr = false;
-        
+
+            bool grass = true;
+            bool others = false;
+
+            ImGui::Checkbox("PBR", &sg->postProcAttri.pbr);
+            ImGui::SameLine(77.5);
+            ImGui::Checkbox("grass", &grass);
+            ImGui::SameLine(155);
+            ImGui::Checkbox("gold", &others);
+            ImGui::SameLine(232.5);
+            ImGui::Checkbox("plastic", &others);
+            ImGui::SameLine(310);
+            ImGui::Checkbox("rusted_iron", &others);
+
             ImGui::Image((void*)(intptr_t)texMap["depth"], ImVec2(128, 128));
             ImGui::SameLine();
             ImGui::Image((void*)(intptr_t)texMap["offScreen"], ImVec2(128, 128));

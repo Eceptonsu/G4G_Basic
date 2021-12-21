@@ -135,7 +135,18 @@ unsigned int loadTexture(const char* fPath)
 
     unsigned char* data = stbi_load(fPath, &width, &height, &nrChannels, 0);
 
-    setupTexture(oneOff, (const void*)data, width, height, nrChannels == 4 ? GL_RGBA : GL_RGB);
+    GLenum format;
+    if (data)
+    {
+        if (nrChannels == 1)
+            format = GL_RED;
+        else if (nrChannels == 3)
+            format = GL_RGB;
+        else if (nrChannels == 4)
+            format = GL_RGBA;
+    }
+
+    setupTexture(oneOff, (const void*)data, width, height, format);
 
     stbi_image_free(data);
     stbi_set_flip_vertically_on_load(false);

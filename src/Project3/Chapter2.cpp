@@ -39,6 +39,9 @@
 SceneGraph scene;
 SceneGraph* globalScene;
 
+// settings
+extern std::map<std::string, int> settings;
+
 void Chapter2::dragDrop(GLFWwindow* window, int count, const char** paths) {
     int i;
 
@@ -115,6 +118,17 @@ void setupShadersAndMaterials(std::map<std::string, unsigned int> texMap)
     Shader::shaders["Bloom"]->use();
     Shader::shaders["Bloom"]->setInt("scene", 0);
     Shader::shaders["Bloom"]->setInt("bloomBlur", 1);
+
+    Shader::shaders["Pbr"]->use();
+    Shader::shaders["Pbr"]->setInt("albedoMap", 0);
+    Shader::shaders["Pbr"]->setInt("normalMap", 1);
+    Shader::shaders["Pbr"]->setInt("metallicMap", 2);
+    Shader::shaders["Pbr"]->setInt("roughnessMap", 3);
+    Shader::shaders["Pbr"]->setInt("aoMap", 4);
+
+    glm::mat4 projection = glm::perspective(glm::radians(60.0f), ((float)settings["scrn_width"] / (float)settings["scrn_height"]), 0.01f, 1000.0f);
+    Shader::shaders["Pbr"]->use();
+    Shader::shaders["Pbr"]->setMat4("projection", projection);
 }
 
 iCubeModel* cubeSystem = NULL;
@@ -177,9 +191,6 @@ std::map<std::string, unsigned int> texMap;
 const unsigned int SHADOW_WIDTH = 1024;
 const unsigned int SHADOW_HEIGHT = 1024;
 
-// settings
-extern std::map<std::string, int> settings;
-
 unsigned int texture[] = { 0,1,2,3 };
 
 CubeModel* lightCube = NULL;
@@ -215,6 +226,101 @@ void renderQuad()
     glBindVertexArray(0);
 }
 
+unsigned int sphereVAO = 0;
+unsigned int indexCount;
+void renderSphere()
+{
+    if (sphereVAO == 0)
+    {
+        glGenVertexArrays(1, &sphereVAO);
+
+        unsigned int vbo, ebo;
+        glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ebo);
+
+        std::vector<glm::vec3> positions;
+        std::vector<glm::vec2> uv;
+        std::vector<glm::vec3> normals;
+        std::vector<unsigned int> indices;
+
+        const unsigned int X_SEGMENTS = 64;
+        const unsigned int Y_SEGMENTS = 64;
+        const float PI = 3.14159265359;
+        for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+        {
+            for (unsigned int y = 0; y <= Y_SEGMENTS; ++y)
+            {
+                float xSegment = (float)x / (float)X_SEGMENTS;
+                float ySegment = (float)y / (float)Y_SEGMENTS;
+                float xPos = std::cos(xSegment * 2.0f * PI) * std::sin(ySegment * PI);
+                float yPos = std::cos(ySegment * PI);
+                float zPos = std::sin(xSegment * 2.0f * PI) * std::sin(ySegment * PI);
+
+                positions.push_back(glm::vec3(xPos, yPos, zPos));
+                uv.push_back(glm::vec2(xSegment, ySegment));
+                normals.push_back(glm::vec3(xPos, yPos, zPos));
+            }
+        }
+
+        bool oddRow = false;
+        for (unsigned int y = 0; y < Y_SEGMENTS; ++y)
+        {
+            if (!oddRow) // even rows: y == 0, y == 2; and so on
+            {
+                for (unsigned int x = 0; x <= X_SEGMENTS; ++x)
+                {
+                    indices.push_back(y * (X_SEGMENTS + 1) + x);
+                    indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+                }
+            }
+            else
+            {
+                for (int x = X_SEGMENTS; x >= 0; --x)
+                {
+                    indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+                    indices.push_back(y * (X_SEGMENTS + 1) + x);
+                }
+            }
+            oddRow = !oddRow;
+        }
+        indexCount = indices.size();
+
+        std::vector<float> data;
+        for (unsigned int i = 0; i < positions.size(); ++i)
+        {
+            data.push_back(positions[i].x);
+            data.push_back(positions[i].y);
+            data.push_back(positions[i].z);
+            if (normals.size() > 0)
+            {
+                data.push_back(normals[i].x);
+                data.push_back(normals[i].y);
+                data.push_back(normals[i].z);
+            }
+            if (uv.size() > 0)
+            {
+                data.push_back(uv[i].x);
+                data.push_back(uv[i].y);
+            }
+        }
+        glBindVertexArray(sphereVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+        unsigned int stride = (3 + 2 + 3) * sizeof(float);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
+    }
+
+    glBindVertexArray(sphereVAO);
+    glDrawElements(GL_TRIANGLE_STRIP, indexCount, GL_UNSIGNED_INT, 0);
+}
+
 void Chapter2::start()
 {
     globalScene = &scene;
@@ -231,7 +337,14 @@ void Chapter2::start()
     texMap["rpi"] = loadTexture("data/rpi.png");
     texMap["brick"] = loadTexture("data/brick1.jpg");
 
+    texMap["albedo"] = loadTexture("data/grassPbr/albedo.png");
+    texMap["normal"] = loadTexture("data/grassPbr/normal.png");
+    texMap["metallic"] = loadTexture("data/grassPbr/metallic.png");
+    texMap["roughness"] = loadTexture("data/grassPbr/roughness.png");
+    texMap["ao"] = loadTexture("data/grassPbr/ao.png");
+
     setupHdrBloom(&hdrFBO, pingpongFBO, colorBuffers, pingpongColorbuffers, settings["scrn_width"], settings["scrn_height"]);
+    texMap["hdr"] = colorBuffers[0];
 
     // 
     // set up the perspective projection for the camera and the light
@@ -243,7 +356,6 @@ void Chapter2::start()
     //scene.light.setOrtho(-4.0f, 4.0f, -4.0f, 4.0f, 1.0f, 50.0f);
     scene.light.setPerspective(glm::radians(60.0f), 1.0, 1.0f, 1000.0f);    //  1.0472 radians = 60 degrees
     scene.light.position = glm::vec4(-4.0f, 2.0f, 0.0f, 1.0f);
-
 
     // create shaders and then materials that use the shaders (multiple materials can use the same shader)
 
@@ -273,7 +385,6 @@ void Chapter2::start()
     {   // declare and intialize shader with ADS lighting
         new Shader("data/vFlatLit.glsl", "data/fFlatLit.glsl", "PhongShadowed");
 
-        //
         new Material(Shader::shaders["PhongShadowed"], "litMaterial", NULL, texMap["depth"], true);
 
         new Shader("data/vBloom.glsl", "data/fBloom.glsl", "Bloom");
@@ -306,6 +417,13 @@ void Chapter2::start()
 
     setupScene(&scene, nodes);
 }
+
+int nrRows = 1;
+int nrColumns = 1;
+float spacing = 2.5;
+
+glm::vec3 lightPositions[] = { glm::vec3(-5.0f, -5.0f, 10.0f), };
+glm::vec3 lightColors[] = { glm::vec3(150.0f, 150.0f, 150.0f), };
 
 void Chapter2::update(double deltaTime) {
 
@@ -351,6 +469,54 @@ void Chapter2::update(double deltaTime) {
         // render from the cameras position and perspective, this may or may not be offscreen 
         scene.renderFrom(scene.camera, deltaTime);
 
+        {
+            Shader::shaders["Pbr"]->use();
+            glm::mat4 view = glm::lookAt(scene.camera.position, scene.camera.target, scene.camera.up);
+            Shader::shaders["Pbr"]->setMat4("view", view);
+            Shader::shaders["Pbr"]->setVec3("camPos", scene.camera.position);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, texMap["albedo"]);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, texMap["normal"]);
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, texMap["metallic"]);
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, texMap["roughness"]);
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, texMap["ao"]);
+
+            glm::mat4 model = glm::mat4(1.0f);
+            for (int row = 0; row < nrRows; ++row)
+            {
+                for (int col = 0; col < nrColumns; ++col)
+                {
+                    model = glm::mat4(1.0f);
+                    model = glm::translate(model, glm::vec3(
+                        (float)(col - (nrColumns / 2)) * spacing,
+                        (float)(row - (nrRows / 2)) * spacing,
+                        0.0f
+                    ));
+                    Shader::shaders["Pbr"]->setMat4("model", model);
+                    renderSphere();
+                }
+            }
+
+            for (unsigned int i = 0; i < sizeof(lightPositions) / sizeof(lightPositions[0]); ++i)
+            {
+                glm::vec3 newPos = lightPositions[i] + glm::vec3(sin(glfwGetTime() * 5.0) * 5.0, 0.0, 0.0);
+                newPos = lightPositions[i];
+                Shader::shaders["Pbr"]->setVec3("lightPositions[" + std::to_string(i) + "]", newPos);
+                Shader::shaders["Pbr"]->setVec3("lightColors[" + std::to_string(i) + "]", lightColors[i]);
+
+                model = glm::mat4(1.0f);
+                model = glm::translate(model, newPos);
+                model = glm::scale(model, glm::vec3(0.5f));
+                Shader::shaders["Pbr"]->setMat4("model", model);
+                renderSphere();
+            }
+        }
+
         if (offscreenFBO != 0) 
         {
             // assuming the previous was offscreen, we now need to draw a quad with the results to the screen!
@@ -392,7 +558,7 @@ void Chapter2::update(double deltaTime) {
             glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
             Shader::shaders["Hdr"]->setInt("hdr", scene.postProcAttri.hdr);
             Shader::shaders["Hdr"]->setFloat("exposure", scene.postProcAttri.hdr_exposure);
-            renderQuad();
+            //renderQuad();
         }
         
         if (scene.postProcAttri.bloom)
